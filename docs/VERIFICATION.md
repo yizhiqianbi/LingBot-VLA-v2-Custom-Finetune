@@ -129,6 +129,21 @@ Index 0 的完整处理结果：
 
 实跑同时发现并修正两个上游配置兼容点：v2 policy 应使用 `freeze_vision_encoder` 而不是 legacy `freeze_vit`，启用 alignment 时必须提供 `align_params.visual_steps`。两项都已加入模板和回归测试。
 
+## 100-step stability run
+
+两步 smoke 通过后，又从原始 6B checkpoint 独立执行了 100-step run，退出码为 0，并成功保存 step 100 的 DCP/HF checkpoint。为避免单 batch 波动造成误判，比较前后各 20 步均值：
+
+| 指标 | Steps 1-20 | Steps 81-100 |
+|---|---:|---:|
+| total loss | 0.5538 | 0.3291 |
+| VLA loss | 0.5315 | 0.3188 |
+| depth loss | 2.6616 | 1.1449 |
+| future depth loss | 2.4919 | 1.1249 |
+| future video loss | 0.1189 | 0.0206 |
+| grad norm | 2.2029 | 1.7529 |
+
+100 步内 VLA loss 范围为 `0.1682-1.0562`，符合不同 episode/action chunk 的 batch 波动；未出现 NaN/Inf、非零 `Ignore_Batch_Num`、rank 退出或显存增长。该 run 使用 100-step cosine schedule，只作为稳定性验证，不作为正式训练 checkpoint 续跑来源。
+
 ## 自动测试
 
 单元测试覆盖：
