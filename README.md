@@ -17,6 +17,8 @@
 - 解码当前和未来三路图像，执行 Qwen3-VL 图像处理、语言 tokenization、55D padding 和 joint mask。
 - 在 8 张 H200 上完成 2-step FSDP2 forward/backward/optimizer smoke。
 - 成功保存可恢复 DCP optimizer state 和 6-shard Hugging Face checkpoint。
+- 在 8 张 H200 上完成 2000-step 正式微调，四个周期 checkpoint 均完整且训练中无 NaN/Inf、异常 batch 或 rank failure。
+- 使用相同 5 条 trajectories 对 step 1500/2000 做真实 open-loop 推理；step 2000 的 unnormalized action MSE/MAE 为 `0.007354/0.051602`，优于 step 1500 的 `0.008946/0.057300`。
 
 GPU smoke 的总 loss 为 `0.8694 -> 0.6284`，VLA loss 为 `0.8350 -> 0.5972`，两步的 loss 和梯度均 finite，所有 rank 正常退出。详细记录见 [VERIFICATION.md](docs/VERIFICATION.md)。
 
@@ -157,6 +159,17 @@ scripts/train_smoke.sh
 scripts/train.sh
 ```
 
+9. 训练结束后执行 open-loop action replay：
+
+```bash
+export LINGBOT_EVAL_STEP=2000
+export LINGBOT_EVAL_TRAJ_IDS="0 10 20 30 43"
+export CUDA_VISIBLE_DEVICES=0
+scripts/eval_open_loop.sh
+```
+
+该结果使用训练 trajectories，只验证推理链路和拟合，不代表未见场景或真机成功率。完整协议、实际结果与 shadow/真机检查见 [EVALUATION.md](docs/EVALUATION.md)。
+
 训练参数可以附加在命令末尾，例如：
 
 ```bash
@@ -193,7 +206,7 @@ tests/                    不依赖真实数据的单元测试
 upstream.lock             官方 LingBot-VLA-v2 固定提交
 ```
 
-详细流程见 [PIPELINE.md](docs/PIPELINE.md)，训练参数和恢复策略见 [TRAINING.md](docs/TRAINING.md)，本次真实验证记录见 [VERIFICATION.md](docs/VERIFICATION.md)。
+详细流程见 [PIPELINE.md](docs/PIPELINE.md)，训练参数和恢复策略见 [TRAINING.md](docs/TRAINING.md)，评测与部署检查见 [EVALUATION.md](docs/EVALUATION.md)，本次真实验证记录见 [VERIFICATION.md](docs/VERIFICATION.md)。
 
 ## 安全边界
 

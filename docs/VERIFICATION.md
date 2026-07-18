@@ -144,6 +144,37 @@ Index 0 的完整处理结果：
 
 100 步内 VLA loss 范围为 `0.1682-1.0562`，符合不同 episode/action chunk 的 batch 波动；未出现 NaN/Inf、非零 `Ignore_Batch_Num`、rank 退出或显存增长。该 run 使用 100-step cosine schedule，只作为稳定性验证，不作为正式训练 checkpoint 续跑来源。
 
+## 2000-step formal run
+
+2026-07-18 在 8 张 NVIDIA H200 上从公开 6B checkpoint 独立执行正式 2000-step 微调。global batch size 为 8，checkpoint 间隔为 500 steps。
+
+| Window | Total loss | VLA loss | Depth loss | Future depth | Future video | Grad norm |
+|---|---:|---:|---:|---:|---:|---:|
+| steps 1-50 | 0.5469 | 0.5236 | 2.7937 | 2.6176 | 0.1379 | 2.6414 |
+| steps 451-500 | 0.2849 | 0.2780 | 0.6948 | 0.6990 | 0.0096 | 1.6830 |
+| steps 951-1000 | 0.2825 | 0.2764 | 0.6060 | 0.6055 | 0.0078 | 1.6147 |
+| steps 1451-1500 | 0.2530 | 0.2472 | 0.5617 | 0.5674 | 0.0072 | 1.5616 |
+| steps 1951-2000 | 0.2557 | 0.2499 | 0.5494 | 0.5587 | 0.0070 | 1.6233 |
+
+- 达到 `2000/2000` 后按预期退出，shell/torchrun ranks 均正常结束。
+- 全程没有 NaN/Inf、非零 `Ignore_Batch_Num`、Traceback 或 elastic failure。
+- `global_step_500/1000/1500/2000` 均包含完整 DCP state 和 6-shard HF checkpoint。
+- 每个 checkpoint 约 92 GiB，全部保存在代码仓库之外。
+- 后半程受到同机其他 GPU 作业竞争，step time 从约 2.1 秒上升到约 3.7 秒，但没有影响数值稳定性。
+
+结束摘要中的 `eval_failed=5` 不是训练或权重转换失败。该版本 saver 会把成功保存但没有提交/跳过自动评测的记录计入此字段；同一摘要显示 `hf_success=5`、`hf_failed=0`、`failures=[]`。本项目在训练结束后单独运行 open-loop evaluation。
+
+## Open-loop inference
+
+使用 episodes `0, 10, 20, 30, 43`，每条执行 3 个 50-step chunks，共比较 750 个 unnormalized action positions：
+
+| Checkpoint | Average MSE | Average MAE |
+|---|---:|---:|
+| step 1500 | 0.008946 | 0.057300 |
+| step 2000 | **0.007354** | **0.051602** |
+
+两个 checkpoint 均成功完成模型加载、三路视频解码、Qwen3-VL 预处理、10-step denoising 和 8D 动作反变换。step 2000 在全部 5 条测试 trajectories 上均取得更低误差，是当前 replay 协议下的首选。稳定推理耗时约 0.66 秒/50-step chunk；详细边界和真机测试要求见 [EVALUATION.md](EVALUATION.md)。
+
 ## 自动测试
 
 单元测试覆盖：
@@ -161,6 +192,7 @@ Index 0 的完整处理结果：
 
 ## 剩余验证
 
-- 用独立 episode 或真实机器人 rollout 选择正式 checkpoint，不能只依赖 training loss。
+- 构建独立 held-out episodes；当前 open-loop 指标来自 training replay，不能解释为泛化性能。
+- 完成真实机器人 shadow test 和受限速度 rollout，并用任务成功率最终选择 checkpoint。
 - 在部署端确认 7 个右臂关节的顺序、单位和 delta 反变换。
 - 在重接相机线或修改数据 key 前，确认四路相机物理左右并做版本化迁移。

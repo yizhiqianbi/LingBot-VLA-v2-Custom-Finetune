@@ -160,7 +160,20 @@ right_gripper_target = predicted_absolute_gripper
 
 部署侧必须使用与训练相同的关节顺序和单位。若机器人控制器使用角度、归一化 encoder count 或不同关节顺序，必须在执行前做显式变换，不能直接发送模型输出。
 
-## 9. 常见失败
+## 9. 离线评测
+
+训练结束后使用 Hugging Face checkpoint 做 action replay：
+
+```bash
+export LINGBOT_EVAL_STEP=2000
+export LINGBOT_EVAL_TRAJ_IDS="0 10 20 30 43"
+export CUDA_VISIBLE_DEVICES=0
+scripts/eval_open_loop.sh
+```
+
+脚本默认评测 3 个 50-step chunks，并保存逐维 GT/prediction 曲线和 MSE/MAE 日志。正式选择 checkpoint 前应在完全相同的 episodes 上比较多个 step。当前全量训练 run 没有 held-out split，因此 replay 指标不能解释为泛化性能。详见 [EVALUATION.md](EVALUATION.md)。
+
+## 10. 常见失败
 
 ### `BackwardCompatibilityError` for v2.1
 
