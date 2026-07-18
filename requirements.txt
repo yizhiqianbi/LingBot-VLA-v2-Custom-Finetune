@@ -1,0 +1,4 @@
+huggingface-hub>=0.34,<2
+numpy>=1.26,<3
+pyarrow>=15,<23
+PyYAML>=6,<7

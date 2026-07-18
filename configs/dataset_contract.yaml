@@ -1,0 +1,88 @@
+schema_version: lingbot-custom-dataset-contract-v1
+
+dataset:
+  repo_id: jokeru/take_wrong_item_right_arm
+  revision: 76a008f11dc65a99d176061fb59807a9abdfdffc
+  lerobot_version: v2.1
+  fps: 28
+  episodes: 44
+  frames: 31359
+  task: Use the right arm to place the misplaced object on the shelf into the location of its correct category.
+
+prepared_dataset:
+  lerobot_version: v3.0
+  lerobot_package_version: 0.4.2
+  receipt_name: .lingbot_vla_prepare_receipt.json
+
+raw_schema:
+  state_key: observation.state
+  action_key: action
+  state_width: 15
+  action_width: 15
+  cameras:
+    - observation.images.left_eye
+    - observation.images.right_eye
+    - observation.images.left_wrist
+    - observation.images.right_wrist
+
+training_mapping:
+  confidence: inferred_from_task_video_and_full_numeric_audit
+  owner_confirmation_required: true
+  states:
+    arm.position:
+      source_key: observation.state
+      start: 0
+      end: 7
+      semantic: right_arm_joint_position_7d
+    effector.position:
+      source_key: observation.state
+      start: 14
+      end: 15
+      semantic: right_gripper_position_1d
+  actions:
+    arm.position:
+      source_key: action
+      start: 0
+      end: 7
+      semantic: right_arm_joint_target_7d
+      subtract_state: true
+      relative_type: joint
+    effector.position:
+      source_key: action
+      start: 14
+      end: 15
+      semantic: right_gripper_next_state_target_1d
+      subtract_state: false
+  ignored_slices:
+    - source_keys: [observation.state, action]
+      start: 7
+      end: 14
+      reason: passive_arm_channels_are_not_independent_control_targets
+  observed_relations:
+    - action_start: 7
+      action_end: 15
+      state_start: 7
+      state_end: 15
+      relation: action_t_equals_state_t_plus_1
+      maximum_absolute_error: 0.0
+      scope: all_nonterminal_rows_all_44_episodes
+
+camera_mapping:
+  camera_top: observation.images.right_eye
+  camera_wrist_left: observation.images.left_wrist
+  camera_wrist_right: observation.images.right_wrist
+  omitted:
+    - observation.images.left_eye
+
+acceptance_assumptions:
+  - raw indices 0:7 are the seven right-arm joints in deployment order
+  - raw index 14 is the right gripper and uses an absolute next-state target
+  - raw indices 7:14 are passive channels and must not be emitted by the policy
+  - right_eye is the primary global camera for this right-arm task
+
+audit_thresholds:
+  timestamp_fps_warning_relative_tolerance: 0.02
+  timestamp_fps_error_relative_tolerance: 0.05
+  next_state_max_error: 1.0e-7
+  independent_action_min_mean_error: 1.0e-4
+  minimum_video_bytes: 1024

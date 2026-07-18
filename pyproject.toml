@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lingbot-vla-custom-finetune"
+version = "0.1.0"
+description = "Auditable LingBot-VLA-v2 fine-tuning recipe for custom LeRobot datasets"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+dependencies = [
+  "huggingface-hub>=0.34,<2",
+  "numpy>=1.26,<3",
+  "pyarrow>=15,<23",
+  "PyYAML>=6,<7",
+]
+
+[project.scripts]
+lingbot-custom-audit = "lingbot_vla_finetune.audit:main"
+lingbot-custom-download = "lingbot_vla_finetune.download:main"
+lingbot-custom-full-smoke = "lingbot_vla_finetune.full_sample:main"
+lingbot-custom-norm = "lingbot_vla_finetune.norm_stats:main"
+lingbot-custom-prepare = "lingbot_vla_finetune.prepare:main"
+lingbot-custom-preflight = "lingbot_vla_finetune.preflight:main"
+lingbot-custom-render = "lingbot_vla_finetune.render:main"
+lingbot-custom-smoke = "lingbot_vla_finetune.smoke_loader:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
