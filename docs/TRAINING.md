@@ -30,7 +30,9 @@
 | `gradient_accumulation_steps` | 1 | 可按 GPU 数和目标 global batch 调整 |
 | `max_steps` | 5000 | 初始上限，建议按验证表现调整 |
 | `save_steps` | 500 | 周期 checkpoint |
-| `freeze_vit` | true | 冻结 Qwen visual tower，降低过拟合和显存 |
+| `freeze_vit` | false | 上游 legacy 路径会错误访问不存在的 `model.visual` |
+| `freeze_vision_encoder` | true | 通过 LingBot-VLA-v2 policy 原生路径冻结 Qwen visual tower |
+| `align_params.visual_steps` | 5000 | 上游可视化分支的必填周期；缺失会在首步后触发 `KeyError` |
 | `use_future_image` | true | 为辅助 future supervision 提供未来帧 |
 
 数据只有 44 episodes。默认配置刻意使用较低学习率并冻结 visual tower，但仍可能过拟合。建议保存多个 checkpoint，在独立 rollout 或至少 held-out episodes 上选择，而不是只看 training loss。
@@ -179,6 +181,14 @@ Contract 已修改。重新审计并由所有者确认后生成 acceptance。
 ### `global_batch_size` mismatch
 
 删除手工 override，仅设置 `gradient_accumulation_steps`。
+
+### `'LingbotVlaV2Policy' object has no attribute 'visual'`
+
+这是上游 `freeze_vit` legacy 入口与 v2 policy 模块层级不兼容。保持 `freeze_vit: false`、`freeze_vision_encoder: true`；后者会在 `model.qwenvl_with_expert.qwenvl.visual` 的实际持有模块中冻结视觉塔。不要通过关闭所有冻结选项来绕过，否则会改变微调策略并显著增加可训练参数。
+
+### `KeyError: 'visual_steps'`
+
+启用 depth/video alignment 时，上游训练循环会无条件读取 `align_params.visual_steps`。模板固定为官方配置使用的 `5000`；短 smoke 不执行图片可视化，正式长训每 5000 steps 输出一次辅助预测。
 
 ### Video timestamp tolerance error
 

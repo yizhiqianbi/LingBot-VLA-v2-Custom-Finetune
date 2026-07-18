@@ -93,6 +93,42 @@ Index 0 的完整处理结果：
 
 当前和未来图像标准差均约 69.7，确认不是空白帧；所有输出 finite。
 
+## Camera wiring audit
+
+2026-07-18 对同一帧的四路视频进行并排视觉核验。采集时的 raw 名字与物理安装位不一致：
+
+| raw key | 画面可验证的实际角色 |
+|---|---|
+| `left_eye` | head/global A |
+| `left_wrist` | head/global B |
+| `right_eye` | wrist A |
+| `right_wrist` | wrist B |
+
+训练输入已按实际画面角色修正为 `camera_top <- left_eye`、两个 wrist slot `<- right_eye/right_wrist`。物理左右仍待厂商线序表或逐路遮挡实验确认；在此之前 raw key 作为稳定 stream ID，训练和部署必须使用同一映射。
+
+## GPU training smoke
+
+2026-07-18 在 8 张 NVIDIA H200 上完成真实 2-step FSDP2 smoke：
+
+| 指标 | Step 1 | Step 2 |
+|---|---:|---:|
+| total loss | 0.8694 | 0.6284 |
+| VLA loss | 0.8350 | 0.5972 |
+| depth loss | 4.1542 | 3.7060 |
+| future depth loss | 3.8223 | 3.4943 |
+| future video loss | 0.3345 | 0.2272 |
+| grad norm | 5.7266 | 2.3336 |
+
+- Global batch size：8（micro batch 1 x 8 ranks）。
+- 模型参数：6,375.9M；每步 activated 参数约 5,186.8M。
+- 峰值单卡显存：约 27.37 GB。
+- 所有 loss、梯度和输入 tensor finite。
+- DCP checkpoint 和 6-shard HF checkpoint 均成功保存。
+- 训练进程退出码：0。
+- Smoke checkpoint 总大小：约 93 GB，位于代码仓库之外。
+
+实跑同时发现并修正两个上游配置兼容点：v2 policy 应使用 `freeze_vision_encoder` 而不是 legacy `freeze_vit`，启用 alignment 时必须提供 `align_params.visual_steps`。两项都已加入模板和回归测试。
+
 ## 自动测试
 
 单元测试覆盖：
@@ -108,13 +144,8 @@ Index 0 的完整处理结果：
 - template 缺失变量。
 - stale acceptance 拒绝。
 
-## 未完成项
+## 剩余验证
 
-当前执行环境 `torch.cuda.is_available()` 为 false，因此无法完成：
-
-- 公共 6B checkpoint 的 GPU 构建。
-- MoE fused kernel 编译。
-- forward/backward/optimizer step。
-- 两步 distributed train smoke。
-
-这些步骤已经由 `scripts/check_environment.sh --require-cuda` 和 `scripts/train_smoke.sh` 封装，必须在有兼容 CUDA GPU 的节点继续执行。数据、归一化和完整 sample 链路已经调通。
+- 用独立 episode 或真实机器人 rollout 选择正式 checkpoint，不能只依赖 training loss。
+- 在部署端确认 7 个右臂关节的顺序、单位和 delta 反变换。
+- 在重接相机线或修改数据 key 前，确认四路相机物理左右并做版本化迁移。

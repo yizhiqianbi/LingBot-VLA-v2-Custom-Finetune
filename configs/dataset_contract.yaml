@@ -68,17 +68,31 @@ training_mapping:
       scope: all_nonterminal_rows_all_44_episodes
 
 camera_mapping:
-  camera_top: observation.images.right_eye
-  camera_wrist_left: observation.images.left_wrist
+  camera_top: observation.images.left_eye
+  camera_wrist_left: observation.images.right_eye
   camera_wrist_right: observation.images.right_wrist
   omitted:
-    - observation.images.left_eye
+    - observation.images.left_wrist
+
+camera_wiring:
+  raw_names_match_physical_mounts: false
+  mapping_basis: synchronized_visual_content_audit_2026_07_18
+  observed_roles:
+    observation.images.left_eye: head_global_stream_a
+    observation.images.left_wrist: head_global_stream_b
+    observation.images.right_eye: wrist_stream_a
+    observation.images.right_wrist: wrist_stream_b
+  physical_left_right_status: pending_factory_wiring_table
+  migration_rule: keep_raw_stream_ids_stable_for_training_and_inference_until_an_explicit_versioned_remap
 
 acceptance_assumptions:
   - raw indices 0:7 are the seven right-arm joints in deployment order
   - raw index 14 is the right gripper and uses an absolute next-state target
   - raw indices 7:14 are passive channels and must not be emitted by the policy
-  - right_eye is the primary global camera for this right-arm task
+  - raw camera names are stable stream IDs and must not be interpreted as physical mount labels
+  - left_eye is used as the global view because its decoded content is a head-mounted view
+  - right_eye and right_wrist are the two decoded wrist views; their physical left-right assignment remains provisional
+  - training and deployment must preserve this exact raw-key mapping until a versioned camera remap is applied to both
 
 audit_thresholds:
   timestamp_fps_warning_relative_tolerance: 0.02

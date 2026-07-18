@@ -61,7 +61,9 @@ train:
   rmpad: false
   rmpad_with_pos_ids: false
   ulysses_parallel_size: 1
-  freeze_vit: true
+  # LingbotVlaV2Policy has no top-level `visual`; use its native freeze flag.
+  freeze_vit: false
+  freeze_vision_encoder: true
   tokenizer_max_length: 72
   action_dim: 55
   max_action_dim: 55
@@ -88,6 +90,7 @@ train:
   align_params:
     mode: query
     num_task_tokens: 8
+    visual_steps: 5000
     depth_loss_weight: 0.004
     future_depth_loss_weight: 0.004
     use_future_video: true

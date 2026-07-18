@@ -29,15 +29,26 @@ Task：
 - `observation.images.left_wrist`
 - `observation.images.right_wrist`
 
-LingBot-VLA-v2 公开训练配置使用三个标准视角，因此当前映射为：
+采集完成后确认，天机本体出厂时四路相机数据线存在错接，raw key 的名字与物理安装位不一致。2026-07-18 对同一时刻的四路视频做同步画面审计，得到可直接从画面验证的角色：
+
+| raw key | 实际画面角色 | 物理左右状态 |
+|---|---|---|
+| `observation.images.left_eye` | 头部/global 视角 A | 待线序表确认 |
+| `observation.images.left_wrist` | 头部/global 视角 B | 待线序表确认 |
+| `observation.images.right_eye` | 腕部视角 A | 待线序表确认 |
+| `observation.images.right_wrist` | 腕部视角 B | 待线序表确认 |
+
+这说明 eye/wrist 类别也发生了交叉，不能只把 raw 名字直接送入同名 LingBot slot。LingBot-VLA-v2 公开训练配置使用一个 global 和两个 wrist 视角，因此当前按实际画面角色映射为：
 
 ```yaml
-camera_top: observation.images.right_eye
-camera_wrist_left: observation.images.left_wrist
+camera_top: observation.images.left_eye
+camera_wrist_left: observation.images.right_eye
 camera_wrist_right: observation.images.right_wrist
 ```
 
-选择 `right_eye` 作为 global camera 的理由是任务明确限定 right arm。保留两路 wrist camera 是为了保持公开模型的三视角结构和位置先验。`left_eye` 不送入模型，但源审计仍检查其文件完整性。
+`camera_wrist_left/right` 在当前 contract 中是模型输入 slot 名，不代表已经证明了物理左右。选择 raw `left_eye` 作为 global，保留 raw `right_eye` 和 `right_wrist` 两路实际 wrist 画面，以匹配公开模型的三视角结构；另一条实际 global 流 raw `left_wrist` 暂不送入模型，但源审计仍检查其完整性。
+
+在厂商线序表或逐路遮挡实验完成前，四个 raw key 被当作稳定的 stream ID。当前数据训练和部署推理只要使用同一映射就不会发生输入漂移。未来修正物理命名时必须新增版本化 remap，同时迁移训练和推理配置；不能只改数据 key 或只改部署端。
 
 ## 3. 动作数值审计
 
@@ -132,7 +143,9 @@ Episode 11 为 28.615 FPS，与 nominal 28 FPS 相差 2.20%。它低于 5% 的 h
 1. 原始 `0:7` 的顺序确实是部署侧右臂 7 个关节顺序。
 2. 原始 `14` 确实是右夹爪，而不是其他本体自由度。
 3. `7:14` 不应由本任务 policy 控制。
-4. `right_eye` 确实是适合右臂任务的 global camera。
+4. 部署输入继续使用与训练相同的 raw stream ID；不能按错误的 key 名自行重排。
 5. 部署侧执行动作时，会对 arm delta 做 `state + delta`，对 gripper 保持 absolute。
+
+相机物理左右不作为本轮训练放行的阻塞项，但必须在正式部署重接线或重命名前完成线序确认和版本化迁移。
 
 代码不会自动替数据所有者做这项确认。
