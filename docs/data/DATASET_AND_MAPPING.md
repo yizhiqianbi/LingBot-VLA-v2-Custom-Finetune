@@ -1,5 +1,9 @@
 # Dataset and Feature Mapping
 
+[文档索引](../README.md)
+
+本文是 dataset revision、15D state/action 语义、相机错线映射和 owner acceptance 的唯一说明位置。端到端处理流程见 [Pipeline](../workflow/PIPELINE.md)，最新实测结果见 [Validation Status](../reference/VALIDATION_STATUS.md)。
+
 ## 1. 数据集身份
 
 | 字段 | 值 |

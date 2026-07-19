@@ -1,5 +1,9 @@
 # Preprocessing and Training Pipeline
 
+[文档索引](../README.md)
+
+本文只维护从固定依赖、下载、source audit、v3 preparation 到训练启动前检查的执行流程。数据语义见 [Dataset and Mapping](../data/DATASET_AND_MAPPING.md)，训练参数见 [Fine-tuning](../training/FINETUNING.md)，当前通过/待验状态见 [Validation Status](../reference/VALIDATION_STATUS.md)。
+
 ## 1. 设计目标
 
 这条管线解决四类风险：

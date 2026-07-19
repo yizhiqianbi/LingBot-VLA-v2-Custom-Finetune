@@ -1,6 +1,10 @@
-# Verification Record
+# LingBot-VLA-v2 Validation Status
+
+[文档索引](../README.md)
 
 验证日期：2026-07-18 UTC。
+
+本文是已经实际执行并获得证据的结果记录。它不把 training replay 表述为泛化，也不把模型可加载表述为真机可部署。下一步顺序统一见 [Roadmap](../ROADMAP.md)。
 
 ## 固定输入
 
@@ -173,7 +177,7 @@ Index 0 的完整处理结果：
 | step 1500 | 0.008946 | 0.057300 |
 | step 2000 | **0.007354** | **0.051602** |
 
-两个 checkpoint 均成功完成模型加载、三路视频解码、Qwen3-VL 预处理、10-step denoising 和 8D 动作反变换。step 2000 在全部 5 条测试 trajectories 上均取得更低误差，是当前 replay 协议下的首选。稳定推理耗时约 0.66 秒/50-step chunk；详细边界和真机测试要求见 [EVALUATION.md](EVALUATION.md)。
+两个 checkpoint 均成功完成模型加载、三路视频解码、Qwen3-VL 预处理、10-step denoising 和 8D 动作反变换。step 2000 在全部 5 条测试 trajectories 上均取得更低误差，是当前 replay 协议下的首选。稳定推理耗时约 0.66 秒/50-step chunk；详细边界和真机测试要求见 [Evaluation and Deployment](../evaluation/EVALUATION_AND_DEPLOYMENT.md)。
 
 ## 自动测试
 

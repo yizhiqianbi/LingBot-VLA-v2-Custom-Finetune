@@ -1,165 +1,67 @@
 # LingBot-VLA-v2 Custom Fine-tuning
 
-面向自采数据集 [`jokeru/take_wrong_item_right_arm`](https://huggingface.co/datasets/jokeru/take_wrong_item_right_arm) 的、可审计且可迁移的 [LingBot-VLA-v2](https://github.com/Robbyant/lingbot-vla-v2) 微调工程。
+面向自采数据集 [`jokeru/take_wrong_item_right_arm`](https://huggingface.co/datasets/jokeru/take_wrong_item_right_arm) 的 LingBot-VLA-v2 微调、评测和部署前验证工程。
 
-仓库只包含代码、配置模板、测试和文档，不包含数据、模型权重、归一化统计、训练 checkpoint 或 token。
+仓库只保存代码、配置模板、测试和文档，不提交数据、模型权重、归一化统计、checkpoint、运行产物或 token。官方 LingBot-VLA-v2 源码按 `upstream.lock` 固定版本，并下载到被 Git 忽略的 `.upstream/`。
 
-## 当前状态
+> 当前能力边界：44 个 episodes 已完成数据审计、LeRobot v3.0 转换、完整 sample 验证、8-GPU smoke 和 2000-step 微调。step 2000 的训练集 replay MSE/MAE 为 `0.007354/0.051602`；独立 held-out、shadow test 和真机闭环仍未完成。最新证据以 [Validation Status](docs/reference/VALIDATION_STATUS.md) 为准。
 
-以下链路已在完整数据上实际执行：
+## 数据合同
 
-- 固定 HF dataset revision 并下载完整 v2.1 数据。
-- 审计 44 episodes、31,359 帧、44 parquet 和 176 个 MP4。
-- 非破坏地转换为 LeRobot v3.0 训练副本。
-- 使用官方 `FeatureTransform` 映射 7D 右臂、1D 夹爪和三路相机。
-- 使用官方 `build_vla_dataset` 读取首、中、末三个 50-step action chunk。
-- 计算全量 mean/std/quantile 归一化统计。
-- 解码当前和未来三路图像，执行 Qwen3-VL 图像处理、语言 tokenization、55D padding 和 joint mask。
-- 在 8 张 H200 上完成 2-step FSDP2 forward/backward/optimizer smoke。
-- 成功保存可恢复 DCP optimizer state 和 6-shard Hugging Face checkpoint。
-- 在 8 张 H200 上完成 2000-step 正式微调，四个周期 checkpoint 均完整且训练中无 NaN/Inf、异常 batch 或 rank failure。
-- 使用相同 5 条 trajectories 对 step 1500/2000 做真实 open-loop 推理；step 2000 的 unnormalized action MSE/MAE 为 `0.007354/0.051602`，优于 step 1500 的 `0.008946/0.057300`。
+原始 state/action 均为 15D，但 metadata 没有维度名称。当前经数值和视频审计采用以下训练映射：
 
-GPU smoke 的总 loss 为 `0.8694 -> 0.6284`，VLA loss 为 `0.8350 -> 0.5972`，两步的 loss 和梯度均 finite，所有 rank 正常退出。详细记录见 [VERIFICATION.md](docs/VERIFICATION.md)。
+| 训练特征 | 原始切片 | 模型语义 |
+|---|---:|---|
+| arm state | `observation.state[0:7]` | 右臂 7D 关节位置 |
+| arm action | `action[0:7]` | 相对当前 state 的 joint delta |
+| gripper state | `observation.state[14:15]` | 右夹爪 1D 位置 |
+| gripper action | `action[14:15]` | 右夹爪绝对目标 |
+| ignored | `[7:14]` | 不送入当前任务 policy |
 
-## 数据映射
+映射后的 8 个 active dimensions 会 pad 到 LingBot-VLA-v2 的 55D head，并通过 joint mask 屏蔽其余维度。
 
-HF 元数据没有提供 15 维 state/action 的维度名称，因此映射分成“可直接验证”和“需要所有者确认”两层。
+采集时四路相机线缆接反，raw key 只能作为稳定 stream ID，不能按名字推断物理位置。当前训练使用：
 
-| 统一特征 | 原始切片 | 训练语义 | 处理 |
-|---|---:|---|---|
-| `observation.state.arm.position` | `observation.state[0:7]` | 右臂 7D 关节位置 | mean/std |
-| `action.arm.position` | `action[0:7]` | 右臂 7D 目标 | 相对当前 state 的 joint delta |
-| `observation.state.effector.position` | `observation.state[14:15]` | 右夹爪 1D 位置 | mean/std |
-| `action.effector.position` | `action[14:15]` | 右夹爪绝对目标 | 不减 state |
-| ignored | `[7:14]` | 推断为非任务臂/被动通道 | 不送入 policy |
-
-全量数值审计证明：对每个非 terminal frame，`action[t, 7:15] == state[t+1, 7:15]`，最大绝对误差为 0；`action[0:7]` 与下一帧 state 独立，平均绝对误差约 0.00654。结合 task 文本和视频，当前映射是最一致的解释，但原始 metadata 的 `names` 为 `null`，所以正式训练前仍要求数据所有者确认。
-
-相机映射：
-
-| LingBot 相机 | 原始相机 |
+| LingBot 输入 | Raw stream |
 |---|---|
 | `camera_top` | `observation.images.left_eye` |
 | `camera_wrist_left` | `observation.images.right_eye` |
 | `camera_wrist_right` | `observation.images.right_wrist` |
 
-四路相机线缆在采集时接反，raw key 不能作为物理安装位名称。同步样帧确认 `left_eye`/`left_wrist` 的画面实际是两路头部视角，`right_eye`/`right_wrist` 实际是两路腕部视角。当前按画面角色选择一路 global 和两路 wrist，省略 raw `left_wrist`；物理左右仍待厂商线序表确认。训练与部署必须保持相同 raw-key 映射。完整依据见 [DATASET_AND_MAPPING.md](docs/DATASET_AND_MAPPING.md)。
+部署必须保持同一映射；物理左右和修线后的迁移规则见 [Dataset and Mapping](docs/data/DATASET_AND_MAPPING.md)。
 
-## 流程
-
-```text
-HF v2.1 source
-  -> source audit
-  -> non-destructive v3.0 preparation + receipt
-  -> owner layout acceptance
-  -> rendered runtime configs
-  -> normalization stats + manifest
-  -> numeric loader smoke
-  -> full image/language sample smoke
-  -> 2-step GPU train smoke
-  -> fine-tuning
-```
-
-每个阶段都有独立失败条件。训练只读取带有效 prepare receipt 的 v3.0 目录；正式训练还要求布局 acceptance 和与当前 contract 完全匹配的 norm manifest。
-
-## 环境
-
-推荐 Python 3.12，并使用官方仓库锁定提交：
+## 快速开始
 
 ```bash
+git clone git@github.com:yizhiqianbi/LingBot-VLA-v2-Custom-Finetune.git
+cd LingBot-VLA-v2-Custom-Finetune
+
 scripts/bootstrap_upstream.sh
 python -m pip install -r .upstream/lingbot-vla-v2/requirements.txt
 python -m pip install --no-deps lerobot==0.4.2
 python -m pip install -e .
 ```
 
-这里对 `lerobot` 使用 `--no-deps`，因为 LingBot 官方依赖固定了 `datasets==3.6.0` 和 Torch 2.8，而 LeRobot 0.4.2 的发布依赖范围与其不完全一致。此组合已经通过 v2.1 转换、v3 loader、视频解码和完整 sample 测试。
-
-模型文件按照官方训练要求准备在代码仓库之外：
-
-- `robbyant/lingbot-vla-v2-6b`
-- `Qwen/Qwen3-VL-4B-Instruct`
-- `Ruicheng/moge-2-vitb-normal`
-- LingBot depth checkpoint
-- DINO-VIDEO teacher checkpoint 与 config
-
-## 配置路径
-
-以 `.env.example` 为模板设置环境变量：
-
-```bash
-LINGBOT_PYTHON=/path/to/python
-LINGBOT_SOURCE_DATASET_ROOT=/data/take_wrong_item_right_arm
-LINGBOT_TRAIN_DATASET_ROOT=/data/take_wrong_item_right_arm_v30
-LINGBOT_MODEL_PATH=/models/lingbot-vla-v2-6b
-LINGBOT_TOKENIZER_PATH=/models/Qwen3-VL-4B-Instruct
-LINGBOT_MOGE_PATH=/models/moge/model.pt
-LINGBOT_DEPTH_PATH=/models/lingbot-depth/model.pt
-LINGBOT_VIDEO_CKPT_PATH=/models/dino-video/teacher_step_10000.pth
-LINGBOT_VIDEO_CONFIG_PATH=/models/dino-video/config.yaml
-LINGBOT_RUN_OUTPUT=/runs/take_wrong_item_right_arm
-CUDA_VISIBLE_DEVICES=0,1,2,3
-```
-
-`LINGBOT_SOURCE_DATASET_ROOT` 是不可变的 HF v2.1 下载；`LINGBOT_TRAIN_DATASET_ROOT` 是转换后的 v3.0 训练副本。二者必须位于代码仓库之外且不能互相嵌套。
-
-## 快速开始
-
-1. 下载固定 revision：
+以 `.env.example` 为模板配置 Python、数据、基础模型、teacher 权重和外部输出目录，然后执行：
 
 ```bash
 scripts/download_dataset.sh
-```
-
-2. 审计全部 state/action 文件并抽样解码视频：
-
-```bash
 scripts/validate_dataset.sh --decode-videos
-```
-
-3. 生成非破坏的 v3.0 训练副本：
-
-```bash
 scripts/prepare_dataset.sh
-```
 
-4. 数据所有者核对 `configs/dataset_contract.yaml` 中的关节和相机语义后，写入 acceptance：
+# 数据所有者确认 action 和相机合同后执行
+scripts/validate_dataset.sh --decode-videos --accept-inferred-layout
 
-```bash
-scripts/validate_dataset.sh \
-  --decode-videos \
-  --accept-inferred-layout
-```
-
-5. 生成 runtime config 和全量归一化统计：
-
-```bash
 scripts/render_configs.sh
 scripts/compute_norm_stats.sh
-```
-
-6. 验证 numeric action chunk 和完整训练 sample：
-
-```bash
 scripts/smoke_loader.sh
 scripts/smoke_full_sample.sh --index 0
-```
-
-7. GPU 环境与两步训练 smoke：
-
-```bash
 scripts/check_environment.sh --require-cuda
 scripts/train_smoke.sh
-```
-
-8. 启动正式微调：
-
-```bash
 scripts/train.sh
 ```
 
-9. 训练结束后执行 open-loop action replay：
+训练结束后使用 HF checkpoint 做 open-loop replay：
 
 ```bash
 export LINGBOT_EVAL_STEP=2000
@@ -168,50 +70,36 @@ export CUDA_VISIBLE_DEVICES=0
 scripts/eval_open_loop.sh
 ```
 
-该结果使用训练 trajectories，只验证推理链路和拟合，不代表未见场景或真机成功率。完整协议、实际结果与 shadow/真机检查见 [EVALUATION.md](docs/EVALUATION.md)。
+当前 replay trajectories 参与过训练，只能验证模型加载、预处理、反归一化和拟合链路，不能作为泛化或真机成功率。
 
-训练参数可以附加在命令末尾，例如：
+## 文档入口
 
-```bash
-scripts/train.sh \
-  --train.max_steps 8000 \
-  --train.gradient_accumulation_steps 2 \
-  --train.save_steps 1000
-```
+完整导航见 [Documentation Index](docs/README.md)。建议按以下顺序阅读：
 
-不要手工设置 `global_batch_size`。官方参数层会按照 `micro_batch_size × GPU 数 × gradient_accumulation_steps` 自动计算，避免更换 GPU 数量后配置失效。
+1. [Validation Status](docs/reference/VALIDATION_STATUS.md)：已验证结果与剩余验证。
+2. [Roadmap](docs/ROADMAP.md)：held-out、checkpoint 选择和真机测试顺序。
+3. [Dataset and Mapping](docs/data/DATASET_AND_MAPPING.md)：15D action/state 与错线相机合同。
+4. [Pipeline](docs/workflow/PIPELINE.md)：下载、审计、v3 转换、统计和训练前门槛。
+5. [Fine-tuning](docs/training/FINETUNING.md)：训练策略、参数、恢复和常见失败。
+6. [Evaluation and Deployment](docs/evaluation/EVALUATION_AND_DEPLOYMENT.md)：replay、shadow test 和 closed-loop。
 
-## 技术 smoke 模式
-
-在数据所有者确认前，可以验证数据工程，但不能启动正式训练：
-
-```bash
-export LINGBOT_ALLOW_UNCONFIRMED=1
-scripts/render_configs.sh --allow-unconfirmed
-scripts/compute_norm_stats.sh
-scripts/smoke_loader.sh
-scripts/smoke_full_sample.sh
-```
-
-这时 norm manifest 会记录 `layout_confirmed: false`，`train.sh` 会拒绝使用。完成正式 acceptance 后重新运行 `scripts/compute_norm_stats.sh` 即可生成可训练的统计文件。
-
-## 代码结构
+## 仓库结构
 
 ```text
-configs/                  数据 contract、robot mapping 和训练模板
-docs/                     数据、管线、训练和验证文档
-scripts/                  可直接执行的端到端命令
+configs/                  数据合同、机器人映射和训练模板
+docs/                     文档索引、路线图和专题文档
+scripts/                  端到端命令入口
 src/lingbot_vla_finetune/ 审计、转换、统计、渲染和 smoke 实现
 tests/                    不依赖真实数据的单元测试
 upstream.lock             官方 LingBot-VLA-v2 固定提交
+work/                     本地生成物，不提交 Git
 ```
 
-详细流程见 [PIPELINE.md](docs/PIPELINE.md)，训练参数和恢复策略见 [TRAINING.md](docs/TRAINING.md)，评测与部署检查见 [EVALUATION.md](docs/EVALUATION.md)，本次真实验证记录见 [VERIFICATION.md](docs/VERIFICATION.md)。
+## 验证与导出
 
-## 安全边界
+```bash
+python -m unittest discover -s tests -v
+scripts/export_code.sh /tmp/LingBot-VLA-v2-Custom-Finetune.tar.gz
+```
 
-- `.gitignore` 排除数据、视频、parquet、模型、checkpoint、token、runtime config 和统计文件。
-- `download`、`prepare` 和 `export` 拒绝把大文件写进代码仓库。
-- HF revision、LingBot upstream revision 和 LeRobot 版本均固定。
-- `train.sh` 要求 layout acceptance、prepared receipt、norm manifest 和 CUDA。
-- 通过 `bash -o pipefail` 执行官方训练脚本，保留 `torchrun` 的真实退出码。
+`train.sh` 会检查 CUDA、上游 revision、layout acceptance、prepare receipt、runtime config 和 norm manifest。任何 mapping 变化都必须重新审计、确认并计算 train-only normalization stats。

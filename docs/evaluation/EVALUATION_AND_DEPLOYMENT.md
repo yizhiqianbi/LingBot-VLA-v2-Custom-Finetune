@@ -1,6 +1,10 @@
 # Evaluation and Deployment Checks
 
+[文档索引](../README.md)
+
 本文说明如何验证微调 checkpoint 是否可加载、是否能在记录数据上输出合理动作，以及进入真机闭环前必须完成的检查。
+
+本文只维护评测和部署协议。已完成结果以 [Validation Status](../reference/VALIDATION_STATUS.md) 为准，后续执行顺序见 [Roadmap](../ROADMAP.md)。
 
 ## 1. 评测边界
 

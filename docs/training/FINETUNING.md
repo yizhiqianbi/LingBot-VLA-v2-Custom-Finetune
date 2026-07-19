@@ -1,5 +1,9 @@
 # Fine-tuning Guide
 
+[文档索引](../README.md)
+
+本文只维护训练目标、默认参数、实验阶梯、checkpoint 恢复和故障排查。数据处理顺序见 [Pipeline](../workflow/PIPELINE.md)，模型选择与真机门槛见 [Evaluation and Deployment](../evaluation/EVALUATION_AND_DEPLOYMENT.md)，当前实测状态见 [Validation Status](../reference/VALIDATION_STATUS.md)。
+
 ## 1. 训练目标
 
 本仓库实现的是 LingBot-VLA-v2 公开 6B checkpoint 的 downstream post-training，不修改模型结构。数据层将单臂任务映射到公开模型的统一 55D action/state head，并用 mask 屏蔽 47 个 padding 维度。
@@ -171,7 +175,7 @@ export CUDA_VISIBLE_DEVICES=0
 scripts/eval_open_loop.sh
 ```
 
-脚本默认评测 3 个 50-step chunks，并保存逐维 GT/prediction 曲线和 MSE/MAE 日志。正式选择 checkpoint 前应在完全相同的 episodes 上比较多个 step。当前全量训练 run 没有 held-out split，因此 replay 指标不能解释为泛化性能。详见 [EVALUATION.md](EVALUATION.md)。
+脚本默认评测 3 个 50-step chunks，并保存逐维 GT/prediction 曲线和 MSE/MAE 日志。正式选择 checkpoint 前应在完全相同的 episodes 上比较多个 step。当前全量训练 run 没有 held-out split，因此 replay 指标不能解释为泛化性能。详见 [Evaluation and Deployment](../evaluation/EVALUATION_AND_DEPLOYMENT.md)。
 
 ## 10. 常见失败
 
